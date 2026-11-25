@@ -1,30 +1,70 @@
-# Face Generation using GANs
-[![Language Badge](https://img.shields.io/badge/Language-Python-blue.svg)](https://www.python.org/)
-[![Library Badge](https://img.shields.io/badge/Library-PyTorch-yellow.svg)](https://pytorch.org/)
-[![License Badge](https://img.shields.io/badge/License-CC%20BY--NC%204.0-0a2c46.svg)](https://creativecommons.org/licenses/by-nc/4.0/legalcode)
+# Face generation with a DCGAN
 
-In this project, a Deep Convolutional Generative Adversarial Network (DCGAN) is defined and trained on the CelebFaces Attributes Dataset (CelebA) to generate new images of faces that look as realistic as possible.
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=flat&logo=pytorch&logoColor=white)
+![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-0a2c46?style=flat)
 
-## Get the Data
+Can a network learn to draw faces that don't exist, just by playing a game against another network? This is a deep convolutional GAN (DCGAN) trained on celebrity photos, built in PyTorch.
 
-The CelebA dataset contains over 200,000 celebrity images with annotations. Since we're going to be generating faces, we won't need the annotations, we'll only need the images. Note that these are color images with 3 color channels (RGB) each.
+This was a project in Udacity's Deep Learning Nanodegree. The course gave the notebook structure, the data and the unit tests in `problem_unittests.py`. I wrote the data loading, both networks, the losses and the training loop.
 
-## Define the Model
+## These faces aren't real
 
-A GAN is comprised of two adversarial networks, a discriminator and a generator. The discriminator is a convolutional classifier that takes 32x32x3 tensor images as input and outputs a single value that indicates whether a given image is real or fake. The generator upsamples an input and generates a new image of the same size as our training data (32x32x3).
+![Faces from the generator after 30 epochs](images/generated_faces.png)
 
-## Initialize the Weights of Networks
+*16 faces from the generator after 30 epochs, at 32×32 pixels.*
 
-To help the models converge, the weights of the convolutional and linear layers in the model are initialized from a zero-centered Normal distribution with a standard deviation of 0.02.
+## How it works
+
+A GAN has two networks pulling against each other:
+
+- **The generator** takes 100 random numbers and turns them into a 32×32 colour image.
+- **The discriminator** looks at an image and guesses whether it's a real photo or one the generator made.
+
+The discriminator learns to spot fakes, and the generator learns from its mistakes. If training goes well, the generator ends up making images the discriminator can't tell apart from real ones.
+
+| | Generator | Discriminator |
+|---|---|---|
+| Input | 100 random numbers, uniform on [-1, 1] | 32×32×3 image, scaled to [-1, 1] |
+| Layers | A linear layer to 4×4×128, then 3 transposed convolutions up to 32×32×3 | 3 strided convolutions down to 4×4×128, then a linear layer |
+| Activations | ReLU, and tanh on the output | Leaky ReLU (slope 0.2) |
+| Normalisation | Batch norm on every layer except the last | Batch norm on every layer except the first |
+
+Following the [DCGAN paper](https://arxiv.org/pdf/1511.06434.pdf), there's no pooling. The networks resize with strides instead, and all weights start from a normal distribution with standard deviation 0.02.
+
+**Training:** binary cross-entropy loss, Adam for both networks (learning rate 0.0002, β₁ 0.5, β₂ 0.999), batch size 128, 30 epochs on a GPU.
+
+## The data
+
+A cropped subset of [CelebA](http://mmlab.ie.cuhk.edu.hk/projects/CelebA.html), supplied by the course, resized to 32×32. Here's what the real photos look like:
+
+![Real CelebA faces](images/real_faces.png)
 
 ## Training
 
-Training involves alternating between training the discriminator and the generator. The functions `real_loss` and `fake_loss` are used to calculate the discriminator losses. The discriminator is trained by alternating on real and fake images, then the generator, which tries to trick the discriminator and should have an opposing loss function.
+![Generator and discriminator losses](images/training_losses.png)
 
-## Saving Samples
+GAN losses don't fall the way a normal model's loss does, because each network's loss depends on how good the other one is. Here the discriminator's loss drifts down to around 0.5 and the generator's drifts up, with bigger spikes towards the end. That means the discriminator was slowly winning. Training longer probably wouldn't help much without changes such as label smoothing or a stronger generator.
 
-The code includes a function to print out some loss statistics and save some generated "fake" samples.
+## Caveats
 
-## Improvements
+- **There's no score.** I judged the faces by eye. A measure like FID (Fréchet Inception Distance) would let me compare runs properly.
+- **The dataset is biased.** CelebA is mostly young, white celebrities, and the generated faces reflect that. A model trained on it shouldn't be taken as a picture of what faces look like in general.
+- **32×32 is tiny.** The faces are blurry, and the backgrounds and edges often smear.
+- **One run.** The samples come from one training run and one fixed set of random inputs.
+- **The course template shapes a lot of this.** The cells marked "DON'T MODIFY" are Udacity's code.
 
-The dataset is biased towards "celebrity" faces that are mostly white, and the images have a low resolution. To improve the model, training with different types of images from different sources and adding additional convolutional layers and transposed conv layers to generate images of larger sizes with high resolution could achieve better results. Optimizers and number of epochs also affect the final result.
+## How to run
+
+You need a GPU. Training on a CPU takes hours.
+
+```bash
+pip install torch torchvision numpy matplotlib jupyter
+jupyter notebook dlnd_face_generation.ipynb
+```
+
+The dataset isn't included in this repo. Download `processed_celeba_small.zip` from the course materials, or build your own folder of cropped CelebA images, and put it next to the notebook. The first cell unzips it.
+
+## What I'd like to do next
+
+Add FID so I can compare changes properly, try label smoothing (the `smooth` option is already in `real_loss`, but I never switched it on), and move up to 64×64 images.
